@@ -1,0 +1,24 @@
+{
+	"fileVersion": 1,
+	"versions": {
+		"bindbc-freetype": "1.0.3",
+		"bindbc-loader": "1.0.1",
+		"bindbc-opengl": "1.0.0",
+		"bindbc-sdl": "1.0.1",
+		"derelict-ft": "2.0.0-beta.5",
+		"derelict-pq": "4.0.0",
+		"derelict-sdl2": "3.0.0-beta.8",
+		"derelict-util": "3.0.0-beta.2",
+		"dlangui": "~master",
+		"dpq2": "~master",
+		"dsfml": "2.1.1",
+		"icontheme": "1.2.3",
+		"inilike": "1.2.1",
+		"isfreedesktop": "0.1.1",
+		"money": "3.0.2",
+		"stdx-allocator": "2.77.5",
+		"vibe-d": "0.9.4",
+		"x11": "1.0.21",
+		"xdgpaths": "0.2.5"
+	}
+}

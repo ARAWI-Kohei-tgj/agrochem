@@ -1,0 +1,14 @@
+{
+	"authors": [
+		"ARAWI-Kohei"
+	],
+	"copyright": "Copyright © 2022, ARAWI-Kohei",
+	"description": "A minimal D application.",
+	"license": "proprietary",
+	"name": "agrochem",
+	"dependencies": {
+		"dpq2": "~master",
+		"dlangui": "~master"
+	},
+	"targetType": "executable"
+}

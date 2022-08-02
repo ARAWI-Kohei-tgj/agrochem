@@ -1,0 +1,15 @@
+.dub
+docs.json
+__dummy.html
+docs/
+/agrochem
+agrochem.so
+agrochem.dylib
+agrochem.dll
+agrochem.a
+agrochem.lib
+agrochem-test-*
+*.exe
+*.o
+*.obj
+*.lst
