@@ -3,21 +3,33 @@ module screens.screen_1.process;
 import dpq2;
 import dlangui;
 import std.typecons: Tuple, tuple;
+import std.traits: isUnsigned, isSomeString;
 import std.datetime: Date;
 import postgresql;
+import utils: SpraySummary;
 
 enum TOTAL_COLUMN_DETAILS= 5u;
 
+struct CropInfo{
+	string cropName;
+	Date startDate;
+	string[] fields;
+}
+
 /*************************************************************
- * 
+ *  Screen 1
  *************************************************************/
 void screen_1(Connection conn){
 	import screens.screen_1.layout;
-
+	import std.typecons: Tuple;
 	/**
 	 * 
 	 **/
+	//alias CropInfo= Tuple!(short, "id", string, "cropName", Date, "startDate", string[], "fields");
 	Tuple!(int, "id", Date, "date")[] spraySummary;
+	SpraySummary[] sprayInfoSummary;
+
+	short selectedIdCrop, selectedIdSplay;
 
 	Window window_1= Platform.instance.createWindow("Agrochem",
 		null,
@@ -28,7 +40,7 @@ void screen_1(Connection conn){
 	}
 
 	{
-		import widgets.editline;
+		//import widgets.editline;
 
 		/*****************************************
 		 * widgets
@@ -44,19 +56,18 @@ void screen_1(Connection conn){
 		window_1.mainWidget.addChild(editlineCrop);
 
 +/
-		auto editlineCrop= window_1.mainWidget.childById!EditLine("widget_1_01");
-		with(editlineCrop){
-			minWidth(128);
-			fontSize(24);
-			fontFace("IPAゴシック");
-		}
-
 		auto buttonSearch= window_1.mainWidget.childById!Button("widget_1_02");
 		auto summaryTree= window_1.mainWidget.childById!TreeWidget("widget_1_03");
 		with(summaryTree){
 			minHeight(512);
 			minWidth(256);
 			fontFace("IPAゴシック");
+		}
+
+		// crop info
+		auto cropListTree= window_1.mainWidget.childById!TreeWidget("widget_1_30");
+		with(cropListTree){
+			minWidth(512);
 		}
 
 		auto textFieldName= window_1.mainWidget.childById!TextWidget("widget_1_20");
@@ -124,71 +135,187 @@ void screen_1(Connection conn){
 
 		/*****************************************
 		 * 検索ボタン
+		 *
+		 * Condition:
+		 *   start year -> given
+		 *
+		 * External refference:
+		 *   crop_history -> readonly
+		 *
+		 * step1 播種または定植年を入力
+		 * step2 検索ボタン押下
+		 * step3 その年に播種または定植された作物一覧を取得
+		 * step4 cropListTreeに反映
+		 *
 		 *****************************************/
 		buttonSearch.click= delegate(Widget src) @system{
-			import std.conv: dtext;
-			if(editlineYear.text.length > 0 && editlineCrop.text.length > 0){
+			import std.conv: text, dtext;
+			if(editlineYear.text.length == 0) return true;
 
-				const dstring cropName= editlineCrop.text;
-				const dstring yearDtext= editlineYear.text;
-				{
-					const int year= yearDtext.to!int;
-					QueryParams cmd;
-					with(cmd){
-						sqlCommand= `SELECT fields, seeding, planting
-							FROM crop_history
-							WHERE crop_name = $1::TEXT
-								AND ((seeding IS NOT NULL
-									AND seeding >= $2::DATE AND seeding < $3::DATE) OR
-									(planting IS NOT NULL
-									AND planting >= $2::DATE AND planting < $3::DATE));`;
-						args.length= 3;
-						args[0]= toValue(cropName);
-						args[1]= toValue(Date(year, 1, 1));
-						args[2]= toValue(Date(year+1, 1, 1));
+			const dstring yearDtext= editlineYear.text;
+
+			/***********************
+			 * crop information that seeding or planting in the year 
+			 ***********************/
+			const CropInfo[ushort] cropList= (in int theYear){
+				import dpq2.conv.time: binaryValueAs;
+				import std.typecons: Tuple, tuple;
+				import std.algorithm;
+				import std.array: assocArray;
+				import std.range: chain;
+
+				QueryParams cmdSeeding, cmdPlanting;
+				Tuple!(ushort, "id", Date, "start")[] startDates;
+				CropInfo[ushort] result;
+
+				const yearSt= Date(theYear, 1, 1);
+				const yearEn= Date(theYear+1, 1, 1);
+
+				with(cmdSeeding){
+					sqlCommand= `SELECT crop_id, MIN(the_date) AS start_date
+	FROM seeding_date
+	WHERE the_date >= $1::DATE AND the_date < $2::DATE
+	GROUP BY crop_id;`;
+					args.length= 2;
+					args[0]= toValue(yearSt);
+					args[1]= toValue(yearEn);
+				}
+				with(cmdPlanting){
+					sqlCommand= `SELECT crop_id, MIN(the_date) AS start_date
+	FROM planting_date
+	WHERE the_date >= $1::DATE AND the_date < $2::DATE
+	GROUP BY crop_id;`;
+					args.length= 2;
+					args[0]= toValue(yearSt);
+					args[1]= toValue(yearEn);
+				}
+
+				auto ansSeeding= conn.execParams(cmdSeeding);
+				auto ansPlanting= conn.execParams(cmdPlanting);
+
+				foreach(row; chain(ansSeeding.rangify, ansPlanting.rangify)){// FIXME: .sort((a, b) => a.id < b.id)
+					startDates ~= tuple!("id", "start")(cast(ushort)(row["crop_id"].as!short),
+						row["start_date"].binaryValueAs!Date);
+				}
+				foreach(idx; 0..startDates.length-1){
+					if(startDates[idx].id == startDates[idx+1].id){
+						startDates= startDates[0..idx+1] ~startDates[idx+2..$];
 					}
-					auto ans= conn.execParams(cmd);
-					if(ans[0]["fields"].isNull) textFieldName.text("NIL");	// FIXME: row=0 is temp
-					else{
-						const string[] fields= ans[0]["fields"].as!(string[]);
-						textFieldName.text(fields[0].dtext);
+					else{}
+				}
+
+				QueryParams cmdGetInfo;
+				with(cmdGetInfo){
+					cmdGetInfo.sqlCommand= `SELECT crop_name, fields
+	FROM crop_history
+	WHERE crop_id = $1::SMALLINT;`;
+					args.length= 1;
+				}
+				Date[ushort] startDatesById= startDates.assocArray;
+				foreach(theId; startDatesById.keys){
+					cmdGetInfo.args[0]= toValue(cast(short)(theId));
+					auto ans= conn.execParams(cmdGetInfo);
+					result[theId]= CropInfo(
+						ans[0]["crop_name"].as!string,
+						startDatesById[theId],
+						ans[0]["fields"].as!(string[]));
+				}
+
+				return result;
+			}(editlineYear.text.to!int);
+
+			/**
+			 * register crop names to cropListTree
+			 */
+			(ref TreeWidget tree, in CropInfo[ushort] cropList){
+				import std.algorithm: map, filter;
+				import std.array: Appender, appender, array;
+				import std.conv: text, dtext;
+				import std.format: formattedWrite;
+				import utils: integerToHexStr;
+
+				QueryParams cmdCropNames, cmdCropInfo;
+				Appender!dstring bufLabel;
+				TreeItem theBranch;
+
+				string[string] dictJpToEn= ["ナス": "Eggplant", "ズッキーニ": "Zucchini",
+					"サトイモ": "Taro", "ちぢみほうれん草": "Shrinked_spinach"];// TEMP: move to other file
+
+				const string[] cropNames= cropList.values.map!(a => a.cropName).array;
+
+				foreach(theCropName; cropNames){ 
+					theBranch= tree.items.newChild(theCropName, dictJpToEn[theCropName].dtext);
+
+					foreach(elm; cropList.byKeyValue.filter!(a => a.value.cropName == theCropName)){
+						bufLabel= appender!dstring;
+						bufLabel.formattedWrite!"start=%s, fields=%s"(elm.value.startDate, elm.value.fields);
+						theBranch.newChild(integerToHexStr(elm.key), bufLabel.data);
 					}
 				}
 
-				searchSummary(conn, summaryTree, spraySummary, editlineCrop.text, editlineYear.text);
-				auto idSelected= getDetails(conn, tableDetails, summaryTree.items.selectedItem);
-				if(idSelected > 0) elIdSummary.text= idSelected.to!dstring;
+				(in ushort theCropId){
+					tree.selectItem(integerToHexStr(theCropId));
+					selectedIdCrop= theCropId;
+				}(cropList.keys[0]);	// The front element of cropList
+			}(cropListTree, cropList);
+
+			{
+				import screens.screen_1.subroutines: updateSummaryTree;
+				updateSummaryTree(conn, summaryTree, selectedIdCrop, sprayInfoSummary);
 			}
-			else{}
 
 			return true;
 		};
 
+		/***
+		 * Crop list tree
+		 ***/
+
+		cropListTree.selectionChange= delegate(TreeItems src, TreeItem theItem, bool isActivated) @system{
+			import std.ascii: isHexDigit;
+			import std.algorithm: all;
+			import utils: hexStrToUshort;
+			import screens.screen_1.subroutines: updateSummaryTree;
+
+			if(theItem.id.all!(a => a.isHexDigit)){	// level 2
+				selectedIdCrop= hexStrToUshort(theItem.id);
+			}
+			else{	// level 1
+				selectedIdCrop= hexStrToUshort(theItem.child(0).id);	// the front item
+				cropListTree.selectItem(theItem.child(0).id);
+			}
+
+			updateSummaryTree(conn, summaryTree, selectedIdCrop, sprayInfoSummary);
+		};
+
 		/**
-		 * Tree
+		 * Spray list Tree
 		 */
 		summaryTree.selectionChange= delegate(TreeItems src, TreeItem theItem, bool isActivated) @system{
+			import screens.screen_1.subroutines: getDetails;
 			auto idSelected= getDetails(conn, tableDetails, theItem);
 			if(idSelected > 0) elIdSummary.text= idSelected.to!dstring;
 		};
 
+		/**
+		 *
+		 ***/
 		addSummary.click= delegate(Widget src) @system{
 			import screens.screen_2.process;
 
-			mixin(SCREEN_2);
-			//screen_2(conn);
+			screen_2(conn, selectedIdCrop, summaryTree, tableDetails, sprayInfoSummary);
 			return true;
 		};
 
 		/**
 		 * details
 		 */
-
-		 addDetail.click= delegate(Widget src) @system{
+		addDetail.click= delegate(Widget src) @system{
 			import std.algorithm: all, map, fill;
 			import std.conv: text;
 			import std.string: isNumeric;
 			import std.array: staticArray;
+			import screens.screen_1.subroutines: getDetails;
 
 			QueryParams cmd;
 			with(cmd){
@@ -222,137 +349,11 @@ void screen_1(Connection conn){
 		};
 
 /+
-		addDetail.click= delegate(Widget src) @system{
-			import screens.screen_3.process;
+		removeDetail.click= delegate(Widget src) @system{
 
-			screen_3(conn);
 			return true;
 		};
 +/
 	}
 	window_1.show;
-}
-
-/**
- * 散布内容の詳細を取得しStringGridWidgetへ表示
- *
- * DB_Access:
- *  Table 'spray_detail' as readonly
- *
- ****/
-int getDetails(Connection conn, StringGridWidget grid, TreeItem branch) @system{
-	import std.conv: dtext, to;
-
-	int result;
-	if(branch){
-		@(DataBaseAccess.readonly) QueryParams cmdDetail;
-		@(DataBaseAccess.readonly) QueryParams cmdTotalUse;
-		result= branch.id.to!(typeof(result));
-		/**
-		 * buffer clean-up
-		 */
-		foreach(int idxRow; 0u..grid.rows){
-			foreach(int idxCol; 0u..TOTAL_COLUMN_DETAILS) grid.setCellText(idxCol, idxRow, ""d);
-		}
-
-		with(cmdDetail){
-			sqlCommand= `SELECT chem_name,
-					dilution_num,
-					dilution_unit,
-					purpose
-				FROM spray_detail
-				WHERE id_spray = $1::INTEGER`;
-			args.length= 1;
-			args[0]= toValue(cast(long)result);
-		}
-		auto ans= conn.execParams(cmdDetail);
-
-		/+
-		with(cmdTotalUse){
-			sqlCommand= `SELECT count(*)
-				FROM spray_detail
-				WHERE ;`;
-		}
-+/
-		int idxRow;
-		grid.resize(TOTAL_COLUMN_DETAILS, cast(int)(ans.length));
-		foreach(scope row; ans.rangify){
-			grid.setCellText(0, idxRow, dtext(row["chem_name"].as!string));
-			grid.setCellText(1, idxRow, dtext(row["dilution_num"].as!int));
-			grid.setCellText(2, idxRow, dtext(row["dilution_unit"].as!string));
-			grid.setCellText(3, idxRow, dtext(row["purpose"].as!string));
-			//grid.setCellText(4, idxRow,);
-			++idxRow;
-		}
-	}
-	else{
-		result= -1;
-	}
-	return result;
-}
-
-/**
- *
- **/
-import std.string: isNumeric;
-void searchSummary(Connection conn, TreeWidget tree, Tuple!(int, "id", Date, "date")[] list,
-		const dstring cropName, const dstring year) @system
-in(year.length == 4 && year.isNumeric){
-	import std.conv: text, dtext;
-
-	// clear buffer
-	tree.clearAllItems;
-
-	const string dateSt= year.text ~"-01-01";
-	const string dateEn= year.text ~"-12-31";
-			
-
-	/*************************************
-	 * Initialization
-	 *************************************/
-	//summaryTree.items= new TreeItems;
-	//spraySummary.length= 0;
-
-	/**
-	 * summary
-	 **/
-	QueryParams cmdDateList;
-	with(cmdDateList){
-		args.length= 3;
-		sqlCommand= `SELECT id_spray, spray_date, spray_type
-			FROM spray_summary
-			WHERE spray_date >= to_date($2::text, 'YYYY-MM-DD')
-				AND spray_date <= to_date($3::text, 'YYYY-MM-DD')
-				AND crop_name = $1;`;
-		args[0]= toValue(cropName);
-		args[1]= toValue(dateSt);
-		args[2]= toValue(dateEn);
-	}
-
-	/**
-	 * id_spray, spray_date, crop_name, spray_type, amount_num, amount_unit
-	 **/
-	auto ans= conn.execParams(cmdDateList);
-
-	{
-		import dpq2.conv.time: binaryValueAs;
-		import std.array: Appender, appender;
-		import std.format: formattedWrite;
-		TreeItem foo;
-		Appender!string bufID;
-		bufID.reserve(3);
-		Appender!dstring bufLabel;
-
-		foreach(scope row; ans.rangify){
-			bufID= appender!string;
-			bufLabel= appender!dstring;
-			list ~= tuple!("id", "date")(row["id_spray"].as!int,
-				row["spray_date"].binaryValueAs!Date);
-			bufID.formattedWrite!"%d"(list[$-1].id);	// example, 3 -> "003"
-			bufLabel.formattedWrite!"%s, %s"(list[$-1].date.toISOExtString,
-				row["spray_type"].as!string);
-			foo= tree.items.newChild(bufID.data, bufLabel.data, null);
-		}
-		tree.items.selectItem(foo);
-	}
 }

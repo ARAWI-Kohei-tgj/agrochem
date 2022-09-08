@@ -4,34 +4,16 @@ import screens.screen_1.layout;
 
 enum string SCREEN_1_LAYOUT= q{
 	VerticalLayout{
-		TableLayout{
-			colCount: 3
+		HorizontalLayout{
 			TextWidget{text: "Year:"}
-			TextWidget{text: "Crop:"}
 			TextWidget{text: ""}
 			EditLine{id: widget_1_00}
-			EditLine{id: widget_1_01}
 			Button{id: widget_1_02; text: "Search"}
+		}
+		HorizontalLayout{
 			GroupBox{
 				text: "Crop info"
-				VerticalLayout{
-					HorizontalLayout{
-						TextWidget{text: "Field name:"; fontFace: "Nimbus Suns"}
-						TextWidget{id: widget_1_20; fontFace: "Nimbus Suns"}
-					}
-					HorizontalLayout{
-						TextWidget{text: "Date of seeding:"; fontFace: "Nimbus Suns"}
-						TextWidget{id: widget_1_21}
-					}
-					HorizontalLayout{
-						TextWidget{text: "Date of planting:"; fontFace: "Nimbus Suns"}
-						TextWidget{id: widget_1_22}
-					}
-					HorizontalLayout{
-						TextWidget{text: "Status:"; fontFace: "Nimbus Suns"}
-						TextWidget{id: widget_1_23}
-					}
-				}
+				TreeWidget{id: widget_1_30}
 			}
 		}
 		HorizontalLayout{

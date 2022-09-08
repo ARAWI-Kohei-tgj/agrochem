@@ -9,8 +9,6 @@ enum string SCREEN_2_LAYOUT= q{
 //('2022-04-13', 'ズッキーニ', '植え穴散粒', 306, 'g'),
 			TextWidget{text: "Date[yyyy-MM-dd]"; fontFace: "IPAゴシック"}
 			EditLine{id: widget_2_00; fontFace: "IPAゴシック"}
-			TextWidget{text: "作物"; fontFace: "IPAゴシック"}
-			EditLine{id: widget_2_01; fontFace: "IPAゴシック"}
 			TextWidget{text: "使用方法"; fontFace: "IPAゴシック"}
 			EditLine{id: widget_2_02; fontFace: "IPAゴシック"}
 			TextWidget{text: "使用量（数値）"; fontFace: "IPAゴシック"}
