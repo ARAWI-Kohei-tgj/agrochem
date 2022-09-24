@@ -16,6 +16,9 @@ struct CropInfo{
 	string[] fields;
 }
 
+string[uint] listOfPesticides;
+short selectedIdCrop, selectedIdSpray;	// FIXME: shared
+
 /*************************************************************
  *  Screen 1
  *************************************************************/
@@ -29,7 +32,18 @@ void screen_1(Connection conn){
 	Tuple!(int, "id", Date, "date")[] spraySummary;
 	SpraySummary[] sprayInfoSummary;
 
-	short selectedIdCrop, selectedIdSplay;
+	listOfPesticides= (Connection conn) @system{
+		import std.algorithm: each;
+		string[uint] result;
+		QueryParams cmd;
+		with(cmd){
+			sqlCommand= `SELECT register_code, product_name FROM pesticide_regcode`;
+			args.length= 0;
+		}
+		auto ans= conn.execParams(cmd);
+		ans.rangify.each!(row => result[row["register_code"].as!int]= row["product_name"].as!string);
+		return result;
+	}(conn);
 
 	Window window_1= Platform.instance.createWindow("Agrochem",
 		null,
@@ -87,7 +101,7 @@ void screen_1(Connection conn){
 
 		auto tableDetails= window_1.mainWidget.childById!StringGridWidget("widget_1_04");
 		with(tableDetails){
-			minWidth(700);
+			minWidth(1024);
 			minHeight(482);
 			fontFace("IPAゴシック");
 			resize(TOTAL_COLUMN_DETAILS, 1);
@@ -109,10 +123,10 @@ void screen_1(Connection conn){
 			fontFace("IPAゴシック");
 			minWidth(64);
 		}
-		auto elChemName= window_1.mainWidget.childById!EditLine("widget_1_11");
-		with(elChemName){
+		auto elChemCode= window_1.mainWidget.childById!EditLine("widget_1_11");
+		with(elChemCode){
 			fontFace("IPAゴシック");
-			minWidth(256);
+ 			minWidth(128);
 		}
 		auto elDilutionNum= window_1.mainWidget.childById!EditLine("widget_1_12");
 		with(elDilutionNum){
@@ -309,6 +323,7 @@ void screen_1(Connection conn){
 
 		/**
 		 * details
+		 *
 		 */
 		addDetail.click= delegate(Widget src) @system{
 			import std.algorithm: all, map, fill;
@@ -320,21 +335,21 @@ void screen_1(Connection conn){
 			QueryParams cmd;
 			with(cmd){
 				sqlCommand= `INSERT INTO spray_detail
-(id_spray, chem_name, dilution_num, dilution_unit, purpose) VALUES
-($1::INTEGER, $2::TEXT, $3::INTEGER, $4::TEXT, $5::TEXT);`;
+(id_spray, chem_code, dilution_num, dilution_unit, purpose) VALUES
+($1::INTEGER, $2::INTEGER, $3::INTEGER, $4::TEXT, $5::TEXT);`;
 				args.length= 5;
 			}
 
-			const string[5] strArgs= [elIdSummary.text, elChemName.text,
+			const string[5] strArgs= [elIdSummary.text, elChemCode.text,
 					elDilutionNum.text, elDilutionUnit.text,
 					elPurpose.text].map!(a => a.text).staticArray!5;
 
 			if(strArgs[].all!(a => a.length > 0)){
-				if([strArgs[0], strArgs[2]].all!(a => a.isNumeric)){
+				if([strArgs[0], strArgs[1], strArgs[2]].all!(a => a.isNumeric)){
 					cmd.args[].fill(strArgs[].map!(a => toValue(a)));
 					conn.execParams(cmd);
 
-					elChemName.text(""d);
+					elChemCode.text(""d);
 					elDilutionNum.text(""d);
 					elDilutionUnit.text(""d);
 					elPurpose.text(""d);

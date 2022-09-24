@@ -4,6 +4,27 @@ import dpq2;
 import dlangui;
 import utils: SpraySummary;
 
+/**
+ * strSpc= yyyy-MM-dd
+ */
+ /+
+bool isValidFormDate(Str)(in Str str) @safe
+if(isSomeString!Str){
+	if(str.length == 10){
+		if((str[0..4] ~str[5..7] ~str[8..10]).all!(a => a.isDigit) &&	// this part must be digits
+			str[4] == '-' && str[7] == '-'){	// these are must be hyphen
+			return true;
+		}
+		else{
+			return false;
+		}
+	}
+	else{
+		return false;
+	}
+}
++/
+
 void screen_2(Connection conn, in ushort cropId, TreeWidget treeSummary, StringGridWidget tableDetails, SpraySummary[] sprayInfoSummary){
 	import screens.screen_1.subroutines: updateSummaryTree, getDetails;
 
@@ -20,7 +41,12 @@ void screen_2(Connection conn, in ushort cropId, TreeWidget treeSummary, StringG
 	with(elDate){
 		fontFace("IPAゴシック");
 		minWidth(256);
+/**
+ * constraint
+ * strSpc= "yyyy-MM-dd"
+ */
 	}
+
 	auto elMethod= window_2.mainWidget.childById!EditLine("widget_2_02");
 	with(elMethod){
 		fontFace("IPAゴシック");
